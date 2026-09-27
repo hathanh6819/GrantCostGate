@@ -1,32 +1,33 @@
-# GrantCostGate
+# GrantCostGate v2 — sealed grant-spend capability
 
-GrantCostGate is a contract-only GenLayer Intelligent Contract that applies a pinned federal grant cost principle to a concrete expense description. It returns `ALLOWABLE`, `CONDITIONAL`, `UNALLOWABLE`, or a fail-closed `UNRESOLVED` record.
+GrantCostGate is a contract-only GenLayer Intelligent Contract. Validators answer one bounded semantic question from a pinned official eCFR source: whether a sealed expense is allowable under a cited 2 CFR Part 200 cost principle. Deterministic contract code alone controls the consequential result: issuance, revocation, expiry and one-time consumption of an exact spend capability.
 
-It is deliberately narrow: Title 2, Part 200 cost principles only. It is not a policy-diff system, a legal-opinion service, an escrow, or a two-role assessment workflow.
+## Roles and authority boundary
 
-## Architecture
+- Any wallet can create an immutable commitment. That wallet becomes the authority for that record and may revoke or retry it.
+- Validators independently assess the cited regulation. They never execute a spend.
+- The creator selects a `spend_executor` per commitment. It may be the creator itself for simple reviewer testing, or a second wallet to demonstrate role separation.
+- The deployment wallet receives no owner or operational privilege. The constructor has no inputs.
 
-`classify_cost(expense, section)` is a single-shot adjudication:
+The contract is non-custodial. Consumption is an on-chain authorization receipt for an external treasury adapter; it does not claim that an off-chain or cross-chain payment occurred.
 
-1. Normalize and validate the expense and allowlisted section.
-2. Deduplicate by `sha256(section + normalized expense)`.
-3. Construct the official pinned eCFR URL; callers cannot supply a URL.
-4. Verify HTTP status, byte bounds, citation, and section identity.
-5. Run a schema-bound comparative semantic judgment.
-6. Enforce cross-field decision invariants.
-7. Persist an immutable determination or a fail-closed `UNRESOLVED` audit record.
+## Lifecycle
 
-No retry mutates an existing determination. A duplicate normalized request returns its existing ID. The contract has no payable method and holds no funds.
+1. `create_commitment(...)` seals the expense, section, recipient, amount and action digest.
+2. `assess_commitment(id, revision)` obtains pinned eCFR evidence and substantive validator consensus.
+3. Only an `ALLOWABLE` judgment becomes `AUTHORIZED`. `CONDITIONAL`, `UNALLOWABLE`, source failure and disagreement never grant authority.
+4. `consume_authorization(...)` rechecks the complete sealed action and atomically changes `AUTHORIZED` to `CONSUMED`.
+5. The authority can call `revoke_authorization(...)` before consumption. `UNRESOLVED` records have an explicit retry path.
 
-## Supported sections
+```text
+PENDING -> AUTHORIZED -> CONSUMED
+                      \-> REVOKED
+        -> BLOCKED
+        -> CONDITIONAL
+        -> UNRESOLVED -> PENDING (authorized retry)
+```
 
-- `200.421` Advertising and public relations
-- `200.423` Alcoholic beverages
-- `200.425` Audit services
-- `200.445` Goods or services for personal use
-- `200.475` Travel costs
-
-The source snapshot date is fixed at `2025-01-01`, so validator inputs remain reproducible. See [`docs/test-resources.md`](docs/test-resources.md).
+The contract constructs the official eCFR URL itself and pins the source snapshot to `2025-01-01`. Callers cannot inject an arbitrary evidence URL. Supported sections are 200.421, 200.423, 200.425, 200.445 and 200.475.
 
 ## Verify
 
@@ -34,23 +35,6 @@ The source snapshot date is fixed at `2025-01-01`, so validator inputs remain re
 powershell -ExecutionPolicy Bypass -File scripts/verify_local.ps1
 ```
 
-This runs GenVM lint/validation on both contracts and 19 direct tests against the exact production source.
+See `docs/test-plan.md` for the live matrix. Existing v1 explorer transactions in `docs/release-evidence.md` prove only the superseded classifier and are not evidence for v2.
 
-## Deploy and test
-
-1. Deploy `contracts/ecfr_source_probe.py` to Studio Next and call `probe`.
-2. Confirm validator consensus and compare the returned byte count/digest with the fixture manifest.
-3. Deploy `contracts/grant_cost_gate.py` from the main deployment wallet.
-4. From either test wallet call:
-
-```text
-classify_cost(
-  "Purchase alcoholic beverages for the grant-funded project celebration.",
-  "200.423"
-)
-```
-
-5. Read `get_determination(1)`. Expected outcome: `DETERMINED / UNALLOWABLE / ALCOHOL_PROHIBITED`.
-6. Run conditional, allowable, malformed, duplicate, source-failure and consensus-conflict cases described in [`docs/test-plan.md`](docs/test-plan.md).
-
-The result is a bounded technical demonstration and not legal, accounting, or grants-management advice.
+This is a bounded technical demonstration, not legal, accounting or grants-management advice.

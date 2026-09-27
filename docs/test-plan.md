@@ -1,35 +1,34 @@
-# Verification matrix
+# GrantCostGate v2 verification matrix
 
-## Happy paths
+Deploy with no constructor inputs. Any reviewer wallet can create its own commitment and set itself as executor to test the complete lifecycle. The release evidence should additionally use two wallets to demonstrate separation of authority and executor.
 
-| Case | Section | Expected |
-|---|---:|---|
-| Alcohol for project celebration | 200.423 | `UNALLOWABLE / ALCOHOL_PROHIBITED` |
-| Required federal-award audit | 200.425 | `ALLOWABLE / AUDIT_COST_ALLOWED` |
-| Recruitment advertising requiring records | 200.421 | `CONDITIONAL / DOCUMENTATION_REQUIRED` |
+## Required live lifecycle
 
-## Failure paths
+1. Authority creates an audit-cost commitment; confirm `PENDING`, revision 1 and the exact sealed recipient/amount/action digest.
+2. Assess it; confirm `AUTHORIZED`, revision 2, a source digest and an evidence digest.
+3. Executor tries a wrong recipient, amount and action digest separately; every rejection must leave the full record unchanged.
+4. Executor consumes the exact action; confirm `CONSUMED`, revision 3 and nonzero `consumed_at`.
+5. Replay consumption; confirm rejection and no mutation.
+6. Create and assess alcohol expense; confirm `BLOCKED` and no consumable authority.
+7. Create and assess an expense needing documentation; confirm `CONDITIONAL`, never `AUTHORIZED`.
+8. Exercise `UNRESOLVED` and authority-only retry where practical.
+9. Create an authorization and revoke it; confirm it can no longer be consumed.
+10. Confirm an expired commitment cannot be assessed or consumed.
 
-- Expense shorter than 20 or longer than 600 characters.
-- Unsupported section or arbitrary URL-shaped section.
-- Non-200 source response.
-- Empty, undersized, oversized, wrongly cited, or invalid UTF-8 source.
-- Missing or extra model fields, invalid enums, or non-boolean flags.
-- Duplicate normalized expense/section fingerprint.
+## Local adversarial coverage
 
-## Conflict and adversarial paths
+- Unauthorized create, retry, revoke and consume.
+- Stale revision and duplicate commitment.
+- Invalid amount, recipient, digest, expiry and section.
+- Source unavailable, size invalid and identity mismatch.
+- Malformed or contradictory model output and consensus conflict.
+- Payload substitution and replay with complete pre/post no-mutation assertions.
 
-- Validator comparison returns a non-schema conflict payload: store `UNRESOLVED / CONSENSUS_INVALID`.
-- `ALLOWABLE` without direct support: `MODEL_CONTRADICTION`.
-- `ALLOWABLE` paired with a prohibition reason: `MODEL_CONTRADICTION`.
-- `CONDITIONAL` without a condition or missing-facts reason: `MODEL_CONTRADICTION`.
-- Expense contains prompt-injection text: evidence remains inert and output remains schema-bound.
-- Duplicate calls cannot overwrite or create a second determination.
+## Proof obligations
 
-## Audit invariants
-
-- Every accepted request creates exactly one immutable record.
-- `determination_digest` binds requester, normalized expense, section, source identity, source digest, outcome, reason and conditions.
-- Failed source/model/consensus execution never becomes `ALLOWABLE`.
-- No arbitrary URL enters validator fetch logic.
-- No funds, administrator role, deletion method, or mutable correction path exists.
+- No non-`ALLOWABLE` outcome grants a capability.
+- AI cannot consume, revoke or alter the sealed action.
+- Executor cannot substitute recipient, amount or payload.
+- Capability is single-use, expiring, revision-bound and revocable.
+- Rejected calls do not partially mutate consequential state.
+- Deployment ownership is distinct from operational authorization.

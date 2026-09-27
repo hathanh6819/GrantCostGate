@@ -1,0 +1,20 @@
+#!/usr/bin/env node
+import{createAccount,createClient}from'../../RuleDelta/frontend/node_modules/genlayer-js/dist/index.js';
+import{studioDevnet}from'../../RuleDelta/frontend/node_modules/genlayer-js/dist/chains/index.js';
+const CONTRACT=process.argv[2];if(!/^0x[0-9a-fA-F]{40}$/.test(CONTRACT||''))throw Error('contract address required');
+const chain={...studioDevnet,id:61997,name:'Studio Next',rpcUrls:{default:{http:['https://studio-next.genlayer.com/api']}}};
+function hidden(prompt){return new Promise((resolve,reject)=>{process.stdout.write(prompt);process.stdin.setRawMode(true);process.stdin.resume();process.stdin.setEncoding('utf8');let value='';const done=()=>{process.stdin.off('data',onData);process.stdin.setRawMode(false);process.stdin.pause()};const onData=chunk=>{for(const ch of chunk){if(ch==='\u0003'){done();reject(Error('Interrupted'));return}if(ch==='\r'||ch==='\n'){done();process.stdout.write('\n');resolve(value.trim());return}if(ch==='\u007f'||ch==='\b')value=value.slice(0,-1);else value+=ch}};process.stdin.on('data',onData)})}
+async function signer(label){const secret=await hidden(`${label} private key: `),account=createAccount(secret.startsWith('0x')?secret:`0x${secret}`);return{account,client:createClient({chain,account})}}
+const read=(client,fn,args=[])=>client.readContract({address:CONTRACT,functionName:fn,args,stateStatus:'finalized',jsonSafeReturn:true});
+async function write(s,fn,args,label){const before=Number(await read(s.client,'get_total'));const fees=await s.client.estimateTransactionFees({leaderTimeunitsAllocation:260n,validatorTimeunitsAllocation:600n});const hash=await s.client.writeContract({account:s.account,address:CONTRACT,functionName:fn,args,value:0n,fees:{distribution:fees.distribution,feeValue:fees.feeValue}});console.log(`${label}.tx=${hash}`);const receipt=await s.client.waitForTransactionReceipt({hash,waitUntil:'finalized',interval:3000,retries:600,fullTransaction:false}),tx=await s.client.getTransaction({hash}),after=Number(await read(s.client,'get_total'));console.log(`${label}.execution=${receipt?.txExecutionResultName||'unknown'} consensus=${tx.result_name||tx.result} total=${before}->${after}`);return hash}
+const authority=await signer('authority'),executor=await signer('executor'),recipient='0x3333333333333333333333333333333333333333',action='sha256:'+'c'.repeat(64);
+console.log(`authority=${authority.account.address} executor=${executor.account.address}`);
+await write(authority,'create_commitment',["A sufficiently detailed expense submitted against an unsupported regulation section.",'200.999',recipient,10n,action,executor.account.address,86400n],'unsupported_section');
+await write(authority,'create_commitment',["A sufficiently detailed expense with a malformed action digest for rejection.",'200.425',recipient,10n,'bad-digest',executor.account.address,86400n],'malformed_digest');
+await write(authority,'create_commitment',["A sufficiently detailed expense with an invalid short expiry for rejection.",'200.425',recipient,10n,action,executor.account.address,10n],'invalid_expiry');
+await write(authority,'consume_authorization',[2n,2n,recipient,500n,'sha256:'+'b'.repeat(64)],'wrong_role_blocked_consume');
+await write(executor,'consume_authorization',[2n,2n,recipient,500n,'sha256:'+'b'.repeat(64)],'blocked_consume');
+await write(executor,'consume_authorization',[1n,2n,recipient,12500n,'sha256:'+'a'.repeat(64)],'stale_revision');
+await write(executor,'revoke_authorization',[1n,3n],'unauthorized_revoke');
+await write(authority,'create_commitment',["First-class airfare for grant travel where written justification for premium fare has not been provided.",'200.475',recipient,900n,'sha256:'+'d'.repeat(64),executor.account.address,86400n],'create_conditional');
+const conditionalId=Number(await read(authority.client,'get_total'));await write(authority,'assess_commitment',[conditionalId,1n],'assess_conditional');console.log(`conditional=${JSON.stringify(await read(authority.client,'get_commitment',[conditionalId]))}`);
